@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Resume Classifier - 智能简历岗位匹配</title>
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --primary-hover: #4338ca;
+            --success: #059669;
+            --danger: #dc2626;
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --text: #1e293b;
+            --text-secondary: #64748b;
+            --border: #e2e8f0;
+            --shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+            --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        .container { max-width: 1000px; margin: 0 auto; padding: 20px; }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+            color: white;
+            padding: 40px 0;
+            text-align: center;
+            border-radius: 0 0 24px 24px;
+            margin-bottom: 30px;
+            box-shadow: var(--shadow-lg);
+        }
+        .header h1 { font-size: 2rem; margin-bottom: 8px; }
+        .header p { opacity: 0.85; font-size: 1.05rem; }
+
+        /* Cards */
+        .card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 28px;
+            margin-bottom: 24px;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+        }
+        .card h2 {
+            font-size: 1.25rem;
+            margin-bottom: 16px;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Form */
+        textarea {
+            width: 100%;
+            min-height: 280px;
+            padding: 16px;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            resize: vertical;
+            transition: border-color 0.2s;
+        }
+        textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+        }
+
+        .btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px 32px;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn:hover { background: var(--primary-hover); transform: translateY(-1px); }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+        .btn-secondary {
+            background: white;
+            color: var(--text);
+            border: 2px solid var(--border);
+        }
+        .btn-secondary:hover { background: var(--bg); }
+
+        .form-actions { display: flex; gap: 12px; margin-top: 16px; align-items: center; }
+
+        .char-count {
+            margin-left: auto;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+
+        /* Result */
+        .result { display: none; }
+        .result.show { display: block; }
+
+        .prediction-main {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            padding: 24px;
+            background: linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%);
+            border-radius: 12px;
+            margin-bottom: 20px;
+        }
+        .badge {
+            display: inline-block;
+            background: var(--success);
+            color: white;
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-size: 1.2rem;
+            font-weight: 700;
+        }
+        .confidence-ring {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: conic-gradient(var(--success) var(--pct), #e5e7eb 0);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+        .confidence-ring::before {
+            content: '';
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            background: white;
+            position: absolute;
+        }
+        .confidence-value {
+            position: relative;
+            z-index: 1;
+            font-weight: 700;
+            font-size: 1.1rem;
+            color: var(--success);
+        }
+
+        /* Top-K list */
+        .topk-list { list-style: none; }
+        .topk-item {
+            display: flex;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid var(--border);
+            gap: 12px;
+        }
+        .topk-item:last-child { border-bottom: none; }
+        .topk-rank {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: var(--primary);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 0.875rem;
+            flex-shrink: 0;
+        }
+        .topk-rank.second { background: #6366f1; }
+        .topk-rank.third { background: #818cf8; }
+        .topk-info { flex: 1; }
+        .topk-category { font-weight: 600; }
+        .topk-bar-bg {
+            height: 6px;
+            background: #e5e7eb;
+            border-radius: 3px;
+            margin-top: 4px;
+            overflow: hidden;
+        }
+        .topk-bar-fill {
+            height: 100%;
+            background: var(--primary);
+            border-radius: 3px;
+            transition: width 1s ease;
+        }
+        .topk-pct {
+            font-weight: 600;
+            min-width: 55px;
+            text-align: right;
+        }
+
+        /* Error */
+        .error-box {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: var(--danger);
+            padding: 16px;
+            border-radius: 8px;
+        }
+
+        /* Loading */
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Info bar */
+        .info-bar {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .info-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: #f1f5f9;
+            padding: 8px 14px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+        }
+        .info-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--success);
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 24px;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+
+        @media (max-width: 640px) {
+            .prediction-main { flex-direction: column; text-align: center; }
+            .header h1 { font-size: 1.5rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="container">
+            <h1>AI Resume Classifier</h1>
+            <p>智能简历岗位匹配系统 — 输入简历内容，AI自动判断最适合的岗位类别</p>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- 模型状态 -->
+        {% if model_ready %}
+        <div class="card">
+            <div class="info-bar">
+                <div class="info-item">
+                    <span class="info-dot"></span> 模型就绪
+                </div>
+                <div class="info-item">模型: {{ model_info.model_name }}</div>
+                <div class="info-item">F1分数: {{ '%.2f'|format(model_info.f1_score * 100) }}%</div>
+                <div class="info-item">{{ model_info.num_categories }}个岗位类别</div>
+            </div>
+        </div>
+        {% else %}
+        <div class="card">
+            <div class="error-box">
+                模型未加载。请先运行 <code>python train.py</code> 训练模型。
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- 输入区域 -->
+        <div class="card">
+            <h2>简历内容</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 12px;">
+                粘贴简历全文，支持纯文本。越详细的信息越有助于准确匹配。
+            </p>
+            <textarea id="resumeInput"
+                      placeholder="在此粘贴简历内容&#10;&#10;例如：&#10;SOFTWARE ENGINEER&#10;Summary: Experienced software engineer with 5+ years...&#10;Skills: Python, Java, AWS, Docker...&#10;Experience: Senior Developer at ABC Corp..."></textarea>
+            <div class="form-actions">
+                <button class="btn" id="predictBtn" onclick="submitPredict()"
+                        {% if not model_ready %}disabled{% endif %}>
+                    开始分析匹配
+                </button>
+                <button class="btn btn-secondary" onclick="loadSample()">加载示例</button>
+                <button class="btn btn-secondary" onclick="clearInput()">清空</button>
+                <span class="char-count" id="charCount">0 字符</span>
+            </div>
+        </div>
+
+        <!-- 结果区域 -->
+        <div class="card result" id="resultCard">
+            <h2>分析结果</h2>
+
+            <div id="resultError" class="error-box" style="display:none;"></div>
+
+            <div id="resultContent" style="display:none;">
+                <!-- 主要预测 -->
+                <div class="prediction-main">
+                    <div>
+                        <div style="color: var(--text-secondary); margin-bottom: 4px;">最佳匹配岗位</div>
+                        <span class="badge" id="resultCategory">--</span>
+                    </div>
+                    <div style="text-align: center;">
+                        <div class="confidence-ring" id="confidenceRing" style="--pct: 0deg;">
+                            <span class="confidence-value" id="resultConfidence">--</span>
+                        </div>
+                        <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">置信度</div>
+                    </div>
+                </div>
+
+                <!-- Top-K -->
+                <h3 style="margin-bottom: 12px; color: var(--text-secondary); font-size: 0.95rem;">
+                    其他可能的岗位 (Top-3)
+                </h3>
+                <ul class="topk-list" id="topkList"></ul>
+            </div>
+        </div>
+
+        <div class="footer">
+            04-AI Resume Classifier | Powered by scikit-learn + Random Forest | 24个岗位类别
+        </div>
+    </div>
+
+    <script>
+        // 字符计数
+        document.getElementById('resumeInput').addEventListener('input', function() {
+            document.getElementById('charCount').textContent =
+                this.value.length + ' 字符';
+        });
+
+        function clearInput() {
+            document.getElementById('resumeInput').value = '';
+            document.getElementById('charCount').textContent = '0 字符';
+            document.getElementById('resultCard').classList.remove('show');
+        }
+
+        function loadSample() {
+            const sample = `SOFTWARE ENGINEER
+
+Summary:
+Experienced software engineer with 5+ years of experience in Python,
+Java, and cloud technologies. Strong background in machine learning
+and data engineering.
+
+Technical Skills:
+- Python, Java, JavaScript, SQL
+- AWS, Docker, Kubernetes
+- TensorFlow, PyTorch, Scikit-learn
+- Git, CI/CD, Agile methodologies
+
+Experience:
+Senior Software Engineer | ABC Tech Corp | 2019-2024
+- Developed microservices architecture handling 1M+ requests/day
+- Built ML pipeline for customer churn prediction
+- Led migration from monolith to Kubernetes-based microservices
+- Improved system performance by 40% through optimization
+
+Junior Developer | XYZ Solutions | 2017-2019
+- Developed REST APIs using Python Flask and Django
+
+Education:
+BS in Computer Science, Stanford University`;
+
+            document.getElementById('resumeInput').value = sample;
+            document.getElementById('charCount').textContent = sample.length + ' 字符';
+            document.getElementById('resultCard').classList.remove('show');
+        }
+
+        async function submitPredict() {
+            const btn = document.getElementById('predictBtn');
+            const text = document.getElementById('resumeInput').value.trim();
+            const resultCard = document.getElementById('resultCard');
+            const resultError = document.getElementById('resultError');
+            const resultContent = document.getElementById('resultContent');
+
+            if (text.length < 50) {
+                resultCard.classList.add('show');
+                resultError.style.display = 'block';
+                resultError.textContent = '简历文本过短（<50字符），请提供更完整的内容。';
+                resultContent.style.display = 'none';
+                return;
+            }
+
+            // Loading state
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> 分析中...';
+            resultCard.classList.add('show');
+            resultError.style.display = 'none';
+            resultContent.style.display = 'none';
+
+            try {
+                const resp = await fetch('/predict', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ resume_text: text })
+                });
+                const data = await resp.json();
+
+                if (!data.success) {
+                    resultError.style.display = 'block';
+                    resultError.textContent = data.error;
+                    return;
+                }
+
+                // 显示主要结果
+                document.getElementById('resultCategory').textContent = data.category;
+                document.getElementById('resultConfidence').textContent =
+                    (data.confidence * 100).toFixed(1) + '%';
+
+                // 置信度环
+                const pct = data.confidence * 360;
+                document.getElementById('confidenceRing').style.setProperty('--pct', pct + 'deg');
+
+                // Top-K列表
+                const topkList = document.getElementById('topkList');
+                topkList.innerHTML = '';
+                data.top_k.forEach((item, idx) => {
+                    const rankClass = idx === 0 ? '' : idx === 1 ? 'second' : 'third';
+                    topkList.innerHTML += `
+                        <li class="topk-item">
+                            <span class="topk-rank ${rankClass}">${idx + 1}</span>
+                            <div class="topk-info">
+                                <div class="topk-category">${item.category}</div>
+                                <div class="topk-bar-bg">
+                                    <div class="topk-bar-fill" style="width: ${item.confidence * 100}%"></div>
+                                </div>
+                            </div>
+                            <span class="topk-pct">${(item.confidence * 100).toFixed(1)}%</span>
+                        </li>`;
+                });
+
+                resultContent.style.display = 'block';
+
+            } catch (err) {
+                resultError.style.display = 'block';
+                resultError.textContent = '网络错误: ' + err.message;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '开始分析匹配';
+            }
+        }
+    </script>
+</body>
+</html>
