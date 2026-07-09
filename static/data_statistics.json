@@ -1,0 +1,45 @@
+{
+  "total_samples": 2481,
+  "num_categories": 24,
+  "categories": {
+    "INFORMATION-TECHNOLOGY": 120,
+    "BUSINESS-DEVELOPMENT": 119,
+    "ADVOCATE": 118,
+    "CHEF": 118,
+    "ENGINEERING": 118,
+    "ACCOUNTANT": 118,
+    "FITNESS": 117,
+    "FINANCE": 117,
+    "SALES": 116,
+    "AVIATION": 116,
+    "HEALTHCARE": 115,
+    "CONSULTANT": 115,
+    "BANKING": 115,
+    "CONSTRUCTION": 112,
+    "PUBLIC-RELATIONS": 111,
+    "HR": 110,
+    "DESIGNER": 107,
+    "ARTS": 103,
+    "TEACHER": 102,
+    "APPAREL": 97,
+    "DIGITAL-MEDIA": 96,
+    "AGRICULTURE": 63,
+    "AUTOMOBILE": 36,
+    "BPO": 22
+  },
+  "text_stats": {
+    "avg_chars": 5906.8,
+    "median_chars": 5524.0,
+    "min_chars": 688,
+    "max_chars": 35200,
+    "avg_words": 814.3,
+    "median_words": 760.0
+  },
+  "imbalance_ratio": 5.5,
+  "cleaning_info": {
+    "original_rows": 2484,
+    "cleaned_rows": 2481,
+    "removed_rows": 3,
+    "text_size_reduction_pct": "6.2%"
+  }
+}
