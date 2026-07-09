@@ -1,0 +1,40 @@
+# Python虚拟环境
+.venv/
+
+# Python缓存
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# 数据文件 (数据集过大，不提交到Git)
+data/*.csv
+data/*.json
+data/*.zip
+data/*.tar.gz
+
+# 模型文件 (模型文件较大，不提交到Git)
+models/*.pkl
+models/*.joblib
+
+# IDE
+.vscode/
+.idea/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 环境变量
+.env
+
+# 日志文件
+*.log
+
+# macOS
+__MACOSX/
