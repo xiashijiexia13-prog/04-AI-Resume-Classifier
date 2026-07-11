@@ -110,7 +110,14 @@ def predict():
             'error': '请提供 resume_text 参数。'
         }), 400
 
-    resume_text = data['resume_text'].strip()
+    resume_text = data['resume_text']
+    if not isinstance(resume_text, str):
+        return jsonify({
+            'success': False,
+            'error': 'resume_text 必须是字符串。'
+        }), 400
+
+    resume_text = resume_text.strip()
     if len(resume_text) < 50:
         return jsonify({
             'success': False,

@@ -27,11 +27,11 @@ data_cleaning.py
     2. pandas 数据处理
     3. sklearn.preprocessing.LabelEncoder —— 标签编码
 """
-import re
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import LabelEncoder
 from typing import Tuple
+from text_processing import clean_text
 
 
 def load_raw_data(filepath: str = "data/resume_dataset.csv") -> pd.DataFrame:
@@ -89,56 +89,6 @@ def check_duplicates(df: pd.DataFrame) -> pd.DataFrame:
     else:
         print(f"  [!!] 发现 {n_dupes} 条重复简历，已移除")
     return df
-
-
-def clean_text(text: str) -> str:
-    """
-    清洗单条文本。
-
-    清洗流程：
-        1. 转小写（英文NLP标准做法，减少词汇表大小）
-        2. 移除URL（http/https链接对分类无意义）
-        3. 移除HTML标签
-        4. 移除特殊字符，保留字母、数字和基本标点
-        5. 合并空白字符（多个空格/换行 → 单个空格）
-        6. 去除首尾空格
-
-    Args:
-        text: 原始文本字符串
-
-    Returns:
-        str: 清洗后的文本
-    """
-    if not isinstance(text, str):
-        return ""
-
-    # Step 1: 转小写
-    # 为什么？英文中 "Engineer" 和 "engineer" 应被视为同一个词
-    # 这步减少了词汇量，避免模型学习到大小写噪音
-    text = text.lower()
-
-    # Step 2: 移除URL
-    # URL对岗位分类没有贡献，属于噪音
-    text = re.sub(r'https?://\S+|www\.\S+', ' ', text)
-
-    # Step 3: 移除HTML标签
-    # 部分简历文本中混入了HTML标签（如<br>、<p>等）
-    text = re.sub(r'<[^>]+>', ' ', text)
-
-    # Step 4: 移除特殊字符
-    # 保留：字母(a-z)、数字(0-9)、空格、基本标点(. , ; : ! ? -)
-    # 移除：emoji、特殊符号、非英文字符等
-    # 注意：这一步也会移除 @ # $ % 等，这些对岗位分类意义不大
-    text = re.sub(r'[^a-z0-9\s.,;:!?\'\"()-]', ' ', text)
-
-    # Step 5: 合并多个空白字符为单个空格
-    # 换行符、制表符、多个连续空格 → 单个空格
-    text = re.sub(r'\s+', ' ', text)
-
-    # Step 6: 去除首尾空格
-    text = text.strip()
-
-    return text
 
 
 def clean_dataframe(df: pd.DataFrame) -> pd.DataFrame:

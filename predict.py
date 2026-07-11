@@ -22,13 +22,13 @@ predict.py
     3. 概率校准（CalibratedClassifierCV）
     4. 模型版本管理
 """
-import re
 import joblib
 import json
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Tuple
-import os
+from pathlib import Path
+from text_processing import clean_text
 
 
 class ResumeClassifier:
@@ -45,18 +45,22 @@ class ResumeClassifier:
         print(result['confidence'])   # 0.85
     """
 
-    def __init__(self, model_dir: str = "models"):
+    def __init__(self, model_dir: str = None):
         """
         初始化分类器：加载向量器、模型和标签映射。
 
         Args:
             model_dir: 模型文件所在目录
         """
-        self.model_dir = model_dir
+        self.model_dir = (
+            Path(model_dir)
+            if model_dir
+            else Path(__file__).resolve().parent / "models"
+        )
 
         # 加载TF-IDF向量器
-        vectorizer_path = os.path.join(model_dir, "tfidf_vectorizer.pkl")
-        if not os.path.exists(vectorizer_path):
+        vectorizer_path = self.model_dir / "tfidf_vectorizer.pkl"
+        if not vectorizer_path.exists():
             raise FileNotFoundError(
                 f"TF-IDF向量器未找到: {vectorizer_path}\n"
                 "请先运行 feature_engineering.py 生成向量器"
@@ -65,8 +69,8 @@ class ResumeClassifier:
         print(f"[加载] TF-IDF向量器: {vectorizer_path}")
 
         # 加载最佳模型
-        model_path = os.path.join(model_dir, "best_model.pkl")
-        if not os.path.exists(model_path):
+        model_path = self.model_dir / "best_model.pkl"
+        if not model_path.exists():
             raise FileNotFoundError(
                 f"最佳模型未找到: {model_path}\n"
                 "请先运行 train.py 训练模型"
@@ -75,8 +79,8 @@ class ResumeClassifier:
         print(f"[加载] 最佳模型: {model_path}")
 
         # 加载标签映射
-        label_map_path = os.path.join(model_dir, "label_map.json")
-        if not os.path.exists(label_map_path):
+        label_map_path = self.model_dir / "label_map.json"
+        if not label_map_path.exists():
             raise FileNotFoundError(
                 f"标签映射未找到: {label_map_path}"
             )
@@ -87,47 +91,14 @@ class ResumeClassifier:
         print(f"[加载] 标签映射: {len(self.label_map)} 个类别")
 
         # 加载模型元数据
-        meta_path = os.path.join(model_dir, "model_metadata.json")
-        if os.path.exists(meta_path):
+        meta_path = self.model_dir / "model_metadata.json"
+        if meta_path.exists():
             with open(meta_path, "r") as f:
                 self.metadata = json.load(f)
             print(f"[加载] 模型元数据: {self.metadata['model_name']}, "
                   f"F1={self.metadata['metrics']['f1_weighted']:.4f}")
 
         print(f"\n分类器初始化完成！")
-
-    def clean_text(self, text: str) -> str:
-        """
-        清洗输入文本（必须与data_cleaning.py中的clean_text完全一致）。
-
-        Args:
-            text: 原始简历文本
-
-        Returns:
-            str: 清洗后的文本
-        """
-        if not isinstance(text, str):
-            return ""
-
-        # 转小写
-        text = text.lower()
-
-        # 移除URL
-        text = re.sub(r'https?://\S+|www\.\S+', ' ', text)
-
-        # 移除HTML标签
-        text = re.sub(r'<[^>]+>', ' ', text)
-
-        # 移除特殊字符（保留字母、数字、基本标点）
-        text = re.sub(r'[^a-z0-9\s.,;:!?\'\"()-]', ' ', text)
-
-        # 合并空白字符
-        text = re.sub(r'\s+', ' ', text)
-
-        # 去首尾空格
-        text = text.strip()
-
-        return text
 
     def predict(self, resume_text: str, top_k: int = 3) -> Dict:
         """
@@ -149,7 +120,7 @@ class ResumeClassifier:
             }
         """
         # Step 1: 文本清洗
-        cleaned = self.clean_text(resume_text)
+        cleaned = clean_text(resume_text)
 
         # 输入验证
         if len(cleaned) < 50:
