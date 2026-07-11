@@ -61,15 +61,16 @@ def load_cleaned_data(filepath: str = "data/cleaned_resume.csv") -> pd.DataFrame
     return df
 
 
-def split_train_test(
+def split_train_validation_test(
     df: pd.DataFrame,
     text_col: str = "cleaned_text",
     label_col: str = "label",
     test_size: float = 0.2,
+    validation_size: float = 0.2,
     random_state: int = 42
-) -> Tuple[list, list, list, list]:
+) -> Tuple[list, list, list, list, list, list]:
     """
-    划分训练集和测试集。
+    划分训练集、验证集和独立测试集。
 
     关键参数 stratify：
         - 使用分层抽样，保证训练集和测试集中各类别比例一致
@@ -89,22 +90,31 @@ def split_train_test(
         random_state: 随机种子
 
     Returns:
-        Tuple[list, list, list, list]:
-            X_train, X_test, y_train, y_test
+        训练、验证、测试文本及对应标签。
     """
-    print(f"\n[划分] 训练集/测试集 (test_size={test_size})...")
+    print("\n[划分] 训练集/验证集/测试集...")
 
     X = df[text_col].tolist()
     y = df[label_col].tolist()
 
-    X_train, X_test, y_train, y_test = train_test_split(
+    X_development, X_test, y_development, y_test = train_test_split(
         X, y,
         test_size=test_size,
         random_state=random_state,
         stratify=y  # 分层抽样：保持各类别在训练/测试集中的比例
     )
 
+    X_train, X_validation, y_train, y_validation = train_test_split(
+        X_development,
+        y_development,
+        test_size=validation_size,
+        random_state=random_state,
+        stratify=y_development,
+    )
+
     print(f"  训练集: {len(X_train):,} 条 ({len(X_train)/len(df)*100:.0f}%)")
+    print(f"  验证集: {len(X_validation):,} 条 "
+          f"({len(X_validation)/len(df)*100:.0f}%)")
     print(f"  测试集: {len(X_test):,} 条 ({len(X_test)/len(df)*100:.0f}%)")
 
     # 验证分层抽样效果：检查各类别在两集合中的比例
@@ -121,17 +131,18 @@ def split_train_test(
         print(f"    类别{label_id}: 原始{orig_pct:.1f}%, "
               f"训练{train_pct:.1f}%, 测试{test_pct:.1f}%")
 
-    return X_train, X_test, y_train, y_test
+    return X_train, X_validation, X_test, y_train, y_validation, y_test
 
 
 def create_tfidf_features(
     X_train: list,
+    X_validation: list,
     X_test: list,
     max_features: int = 5000,
     ngram_range: Tuple[int, int] = (1, 2),
     max_df: float = 0.7,
     min_df: int = 2
-) -> Tuple[np.ndarray, np.ndarray, TfidfVectorizer]:
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, TfidfVectorizer]:
     """
     使用TF-IDF将文本转换为数值特征矩阵。
 
@@ -194,12 +205,14 @@ def create_tfidf_features(
     print("\n  正在fit训练集词汇表并转换为TF-IDF矩阵...")
     X_train_tfidf = tfidf.fit_transform(X_train)
 
-    print("  正在transform测试集（使用训练集的词汇表）...")
+    print("  正在transform验证集和测试集（使用训练集的词汇表）...")
+    X_validation_tfidf = tfidf.transform(X_validation)
     X_test_tfidf = tfidf.transform(X_test)
 
     # 输出特征矩阵信息
     print(f"\n  === TF-IDF特征矩阵 ===")
     print(f"  训练集矩阵: {X_train_tfidf.shape}")
+    print(f"  验证集矩阵: {X_validation_tfidf.shape}")
     print(f"  测试集矩阵: {X_test_tfidf.shape}")
     print(f"  词汇表大小: {len(tfidf.vocabulary_):,}")
 
@@ -229,7 +242,7 @@ def create_tfidf_features(
     for idx in top_tfidf_indices[:10]:
         print(f"    {feature_names[idx]:<25} Avg_TFIDF={tfidf_means[idx]:.6f}")
 
-    return X_train_tfidf, X_test_tfidf, tfidf
+    return X_train_tfidf, X_validation_tfidf, X_test_tfidf, tfidf
 
 
 def save_vectorizer(tfidf: TfidfVectorizer, output_dir: str = "models") -> str:
@@ -266,12 +279,14 @@ def main():
     # Step 1: 加载数据
     df = load_cleaned_data()
 
-    # Step 2: 划分训练/测试集
-    X_train, X_test, y_train, y_test = split_train_test(df)
+    # Step 2: 划分训练/验证/独立测试集
+    (X_train, X_validation, X_test,
+     y_train, y_validation, y_test) = split_train_validation_test(df)
 
     # Step 3: TF-IDF特征提取
-    X_train_tfidf, X_test_tfidf, tfidf = create_tfidf_features(
-        X_train, X_test
+    (X_train_tfidf, X_validation_tfidf,
+     X_test_tfidf, tfidf) = create_tfidf_features(
+        X_train, X_validation, X_test
     )
 
     # Step 4: 保存向量器（模型预测时必须用到）
@@ -280,20 +295,25 @@ def main():
     # Step 5: 保存划分后的数据（供训练模块使用）
     print("\n[保存] 特征矩阵和标签...")
     joblib.dump(X_train_tfidf, "models/X_train.pkl")
+    joblib.dump(X_validation_tfidf, "models/X_validation.pkl")
     joblib.dump(X_test_tfidf, "models/X_test.pkl")
     joblib.dump(y_train, "models/y_train.pkl")
+    joblib.dump(y_validation, "models/y_validation.pkl")
     joblib.dump(y_test, "models/y_test.pkl")
     print(f"  models/X_train.pkl ({os.path.getsize('models/X_train.pkl')/1024:.0f} KB)")
+    print(f"  models/X_validation.pkl ({os.path.getsize('models/X_validation.pkl')/1024:.0f} KB)")
     print(f"  models/X_test.pkl  ({os.path.getsize('models/X_test.pkl')/1024:.0f} KB)")
     print(f"  models/y_train.pkl ({os.path.getsize('models/y_train.pkl')/1024:.0f} KB)")
+    print(f"  models/y_validation.pkl ({os.path.getsize('models/y_validation.pkl')/1024:.0f} KB)")
     print(f"  models/y_test.pkl  ({os.path.getsize('models/y_test.pkl')/1024:.0f} KB)")
 
     print("\n" + "=" * 60)
     print("特征工程完成！")
     print("=" * 60)
-    print(f"\n数据流向: 文本({len(X_train)}+{len(X_test)}条)")
+    print(f"\n数据流向: 文本({len(X_train)}+{len(X_validation)}+{len(X_test)}条)")
     print(f"  → TF-IDF向量化")
     print(f"  → 训练集矩阵: {X_train_tfidf.shape}")
+    print(f"  → 验证集矩阵: {X_validation_tfidf.shape}")
     print(f"  → 测试集矩阵: {X_test_tfidf.shape}")
     print(f"  → 准备好了，可以开始模型训练!")
     print(f"\n所有中间文件已保存到 models/ 目录")

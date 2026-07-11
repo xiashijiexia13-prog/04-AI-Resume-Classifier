@@ -76,6 +76,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
+from scipy.sparse import vstack
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import LinearSVC
 from sklearn.ensemble import RandomForestClassifier
@@ -104,16 +105,20 @@ def load_features():
     """加载之前保存的特征矩阵和标签。"""
     print("[加载] 特征和标签...")
     X_train = joblib.load("models/X_train.pkl")
+    X_validation = joblib.load("models/X_validation.pkl")
     X_test = joblib.load("models/X_test.pkl")
     y_train = joblib.load("models/y_train.pkl")
+    y_validation = joblib.load("models/y_validation.pkl")
     y_test = joblib.load("models/y_test.pkl")
 
     print(f"  X_train: {X_train.shape}")
+    print(f"  X_validation: {X_validation.shape}")
     print(f"  X_test:  {X_test.shape}")
     print(f"  y_train: {len(y_train)}")
+    print(f"  y_validation: {len(y_validation)}")
     print(f"  y_test:  {len(y_test)}")
 
-    return X_train, X_test, y_train, y_test
+    return X_train, X_validation, X_test, y_train, y_validation, y_test
 
 
 def train_logistic_regression(X_train, y_train, X_test, y_test):
@@ -296,6 +301,9 @@ def evaluate_model(y_true, y_pred, model, train_time):
     prec = precision_score(y_true, y_pred, average='weighted', zero_division=0)
     rec = recall_score(y_true, y_pred, average='weighted', zero_division=0)
     f1 = f1_score(y_true, y_pred, average='weighted', zero_division=0)
+    precision_macro = precision_score(y_true, y_pred, average='macro', zero_division=0)
+    recall_macro = recall_score(y_true, y_pred, average='macro', zero_division=0)
+    f1_macro = f1_score(y_true, y_pred, average='macro', zero_division=0)
 
     # 完整的分类报告
     report = classification_report(y_true, y_pred, output_dict=True,
@@ -306,6 +314,9 @@ def evaluate_model(y_true, y_pred, model, train_time):
         'precision_weighted': round(prec, 4),
         'recall_weighted': round(rec, 4),
         'f1_weighted': round(f1, 4),
+        'precision_macro': round(precision_macro, 4),
+        'recall_macro': round(recall_macro, 4),
+        'f1_macro': round(f1_macro, 4),
         'train_time_seconds': round(train_time, 2),
         'classification_report': report,
         'predictions': y_pred.tolist() if hasattr(y_pred, 'tolist') else list(y_pred),
@@ -316,6 +327,7 @@ def evaluate_model(y_true, y_pred, model, train_time):
     print(f"  Precision: {prec:.4f}  (weighted avg)")
     print(f"  Recall:    {rec:.4f}  (weighted avg)")
     print(f"  F1-score:  {f1:.4f}  (weighted avg)")
+    print(f"  Macro F1:  {f1_macro:.4f}  (all classes equal weight)")
     print(f"  训练耗时:  {train_time:.2f} 秒")
 
     return metrics
@@ -381,7 +393,7 @@ def plot_confusion_matrix(y_true, y_pred, title, save_path, label_names=None):
 
 def plot_model_comparison(all_metrics, save_path):
     """绘制模型对比柱状图。"""
-    fig, axes = plt.subplots(1, 3, figsize=(16, 5))
+    fig, axes = plt.subplots(1, 4, figsize=(21, 5))
 
     model_names = list(all_metrics.keys())
     colors = ['#3498db', '#2ecc71', '#e74c3c']
@@ -404,13 +416,22 @@ def plot_model_comparison(all_metrics, save_path):
     for i, v in enumerate(f1s):
         axes[1].text(i, v + 0.01, f'{v:.4f}', ha='center', fontweight='bold')
 
+    # Macro F1对比（每个类别等权，能暴露少数类表现）
+    macro_f1s = [all_metrics[m]['f1_macro'] for m in model_names]
+    axes[2].bar(model_names, macro_f1s, color=colors, edgecolor='white')
+    axes[2].set_title('F1-Score Comparison (Macro)', fontweight='bold')
+    axes[2].set_ylabel('Macro F1-Score')
+    axes[2].set_ylim(0, 1)
+    for i, v in enumerate(macro_f1s):
+        axes[2].text(i, v + 0.01, f'{v:.4f}', ha='center', fontweight='bold')
+
     # 训练时间对比
     times = [all_metrics[m]['train_time_seconds'] for m in model_names]
-    axes[2].bar(model_names, times, color=colors, edgecolor='white')
-    axes[2].set_title('Training Time Comparison', fontweight='bold')
-    axes[2].set_ylabel('Seconds')
+    axes[3].bar(model_names, times, color=colors, edgecolor='white')
+    axes[3].set_title('Training Time Comparison', fontweight='bold')
+    axes[3].set_ylabel('Seconds')
     for i, v in enumerate(times):
-        axes[2].text(i, v + 0.1, f'{v:.1f}s', ha='center', fontweight='bold')
+        axes[3].text(i, v + 0.1, f'{v:.1f}s', ha='center', fontweight='bold')
 
     plt.tight_layout()
     plt.savefig(save_path)
@@ -422,27 +443,27 @@ def select_best_model(all_models, all_metrics):
     """
     选择最佳模型。
 
-    选择标准：F1-score (weighted)
+    选择标准：Macro F1
         - 为什么不是Accuracy？ 因为数据不均衡
-        - 为什么是Weighted不是Macro？ Weighted考虑了各类样本量
+        - Macro F1让24个类别等权，避免多数类掩盖少数类表现
         - F1兼顾了Precision和Recall，单一指标太片面
 
     Returns:
         (best_model, best_model_name)
     """
-    best_name = max(all_metrics, key=lambda k: all_metrics[k]['f1_weighted'])
+    best_name = max(all_metrics, key=lambda k: all_metrics[k]['f1_macro'])
     best_model = all_models[best_name]
-    best_f1 = all_metrics[best_name]['f1_weighted']
+    best_f1 = all_metrics[best_name]['f1_macro']
 
     print("\n" + "=" * 60)
     print(f"最佳模型: {best_name}")
-    print(f"F1-score (weighted): {best_f1:.4f}")
+    print(f"Validation Macro F1: {best_f1:.4f}")
     print("=" * 60)
 
     return best_model, best_name
 
 
-def save_best_model(model, model_name, metrics):
+def save_best_model(model, model_name, metrics, validation_metrics, split_sizes):
     """保存最佳模型及其元数据。"""
     os.makedirs("models", exist_ok=True)
 
@@ -458,7 +479,18 @@ def save_best_model(model, model_name, metrics):
             "precision_weighted": metrics['precision_weighted'],
             "recall_weighted": metrics['recall_weighted'],
             "f1_weighted": metrics['f1_weighted'],
+            "precision_macro": metrics['precision_macro'],
+            "recall_macro": metrics['recall_macro'],
+            "f1_macro": metrics['f1_macro'],
             "train_time_seconds": metrics['train_time_seconds'],
+        },
+        "selection": {
+            "metric": "validation_macro_f1",
+            "validation_metrics": {
+                "accuracy": validation_metrics['accuracy'],
+                "f1_weighted": validation_metrics['f1_weighted'],
+                "f1_macro": validation_metrics['f1_macro'],
+            },
         },
         "features": {
             "method": "TF-IDF",
@@ -467,10 +499,13 @@ def save_best_model(model, model_name, metrics):
             "vectorizer_path": "models/tfidf_vectorizer.pkl",
         },
         "data": {
-            "total_samples": 2481,
+            "total_samples": (
+                split_sizes['train'] + split_sizes['validation'] + split_sizes['test']
+            ),
             "num_categories": 24,
-            "train_samples": 1984,
-            "test_samples": 497,
+            "train_samples": split_sizes['train'],
+            "validation_samples": split_sizes['validation'],
+            "test_samples": split_sizes['test'],
         }
     }
 
@@ -489,7 +524,8 @@ def main():
     print("=" * 60)
 
     # Step 1: 加载特征
-    X_train, X_test, y_train, y_test = load_features()
+    (X_train, X_validation, X_test,
+     y_train, y_validation, y_test) = load_features()
 
     # Step 2: 训练3个模型
     all_models = {}
@@ -497,21 +533,21 @@ def main():
 
     # 模型1: Logistic Regression
     lr_model, lr_metrics = train_logistic_regression(
-        X_train, y_train, X_test, y_test
+        X_train, y_train, X_validation, y_validation
     )
     all_models['LogisticRegression'] = lr_model
     all_metrics['LogisticRegression'] = lr_metrics
 
     # 模型2: LinearSVC
     svm_model, svm_metrics = train_linearsvc(
-        X_train, y_train, X_test, y_test
+        X_train, y_train, X_validation, y_validation
     )
     all_models['LinearSVC'] = svm_model
     all_metrics['LinearSVC'] = svm_metrics
 
     # 模型3: Random Forest
     rf_model, rf_metrics = train_random_forest(
-        X_train, y_train, X_test, y_test
+        X_train, y_train, X_validation, y_validation
     )
     all_models['RandomForest'] = rf_model
     all_metrics['RandomForest'] = rf_metrics
@@ -526,7 +562,7 @@ def main():
     print("=" * 60)
     for name, metrics in all_metrics.items():
         plot_confusion_matrix(
-            y_test, metrics['predictions'], name,
+            y_validation, metrics['predictions'], name,
             f"static/confusion_matrix_{name}.png",
             label_map
         )
@@ -536,26 +572,59 @@ def main():
 
     # Step 6: 选择最佳模型
     best_model, best_name = select_best_model(all_models, all_metrics)
-    best_metrics = all_metrics[best_name]
+    best_validation_metrics = all_metrics[best_name]
 
-    # Step 7: 保存最佳模型
-    save_best_model(best_model, best_name, best_metrics)
+    # Step 7: 使用训练集+验证集重新拟合最佳模型，然后只评估一次独立测试集
+    print("\n使用训练集和验证集重新拟合最佳模型...")
+    X_development = vstack([X_train, X_validation])
+    y_development = list(y_train) + list(y_validation)
+    refit_start = time.time()
+    best_model.fit(X_development, y_development)
+    refit_time = time.time() - refit_start
+    test_predictions = best_model.predict(X_test)
+    print("\n独立测试集最终评估（不参与模型选择）")
+    test_metrics = evaluate_model(
+        y_test, test_predictions, best_model, refit_time
+    )
+    plot_confusion_matrix(
+        y_test,
+        test_predictions,
+        f"{best_name} Independent Test",
+        "static/confusion_matrix_best_model_test.png",
+        label_map,
+    )
 
-    # Step 8: 打印完整评估报告
+    # Step 8: 保存最佳模型及独立测试集指标
+    save_best_model(
+        best_model,
+        best_name,
+        test_metrics,
+        best_validation_metrics,
+        {
+            'train': len(y_train),
+            'validation': len(y_validation),
+            'test': len(y_test),
+        },
+    )
+
+    # Step 9: 打印完整评估报告
     print("\n" + "=" * 60)
-    print("完整模型评估总结")
+    print("验证集模型评估总结")
     print("=" * 60)
 
-    print(f"\n{'模型':<25} {'Accuracy':>10} {'Precision':>10} "
-          f"{'Recall':>10} {'F1':>10} {'Time(s)':>10}")
-    print("-" * 75)
+    print(f"\n{'模型':<25} {'Accuracy':>10} {'Weighted F1':>12} "
+          f"{'Macro F1':>10} {'Time(s)':>10}")
+    print("-" * 72)
     for name, m in all_metrics.items():
         marker = " <<<" if name == best_name else ""
-        print(f"{name:<25} {m['accuracy']:>10.4f} {m['precision_weighted']:>10.4f} "
-              f"{m['recall_weighted']:>10.4f} {m['f1_weighted']:>10.4f} "
+        print(f"{name:<25} {m['accuracy']:>10.4f} {m['f1_weighted']:>12.4f} "
+              f"{m['f1_macro']:>10.4f} "
               f"{m['train_time_seconds']:>10.2f}{marker}")
 
-    print(f"\n结论: {best_name} 表现最佳，已保存为最佳模型。")
+    print(f"\n结论: {best_name} 在验证集 Macro F1 上表现最佳。")
+    print(f"独立测试集: Accuracy={test_metrics['accuracy']:.4f}, "
+          f"Weighted F1={test_metrics['f1_weighted']:.4f}, "
+          f"Macro F1={test_metrics['f1_macro']:.4f}")
     print("=" * 60)
 
 
