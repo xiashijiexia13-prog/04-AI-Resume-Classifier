@@ -80,6 +80,7 @@ from scipy.sparse import vstack
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import LinearSVC
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.naive_bayes import MultinomialNB
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.metrics import (
     accuracy_score,
@@ -285,6 +286,21 @@ def train_random_forest(X_train, y_train, X_test, y_test):
     return model, metrics
 
 
+def train_multinomial_nb(X_train, y_train, X_test, y_test):
+    """训练适用于非负稀疏词频特征的Multinomial Naive Bayes基线。"""
+    print("\n" + "=" * 60)
+    print("[模型4] Multinomial Naive Bayes")
+    print("=" * 60)
+
+    model = MultinomialNB(alpha=0.5)
+    start_time = time.time()
+    model.fit(X_train, y_train)
+    train_time = time.time() - start_time
+    y_pred = model.predict(X_test)
+    metrics = evaluate_model(y_test, y_pred, model, train_time)
+    return model, metrics
+
+
 def evaluate_model(y_true, y_pred, model, train_time):
     """
     全面评估模型性能。
@@ -396,7 +412,7 @@ def plot_model_comparison(all_metrics, save_path):
     fig, axes = plt.subplots(1, 4, figsize=(21, 5))
 
     model_names = list(all_metrics.keys())
-    colors = ['#3498db', '#2ecc71', '#e74c3c']
+    colors = ['#3498db', '#2ecc71', '#e74c3c', '#9b59b6']
 
     # Accuracy对比
     accs = [all_metrics[m]['accuracy'] for m in model_names]
@@ -461,6 +477,47 @@ def select_best_model(all_models, all_metrics):
     print("=" * 60)
 
     return best_model, best_name
+
+
+def build_error_analysis(y_true, y_pred, label_map, metrics, top_n=5):
+    """Summarize weakest classes and the most frequent class confusions."""
+    report = metrics['classification_report']
+    class_rows = []
+    for label_id, category in sorted(label_map.items(), key=lambda item: int(item[0])):
+        values = report.get(str(label_id), {})
+        class_rows.append({
+            'category': category,
+            'precision': round(values.get('precision', 0.0), 4),
+            'recall': round(values.get('recall', 0.0), 4),
+            'f1_score': round(values.get('f1-score', 0.0), 4),
+            'support': int(values.get('support', 0)),
+        })
+
+    weakest_classes = sorted(class_rows, key=lambda row: row['f1_score'])[:top_n]
+    cm = confusion_matrix(y_true, y_pred)
+    confusions = []
+    for true_id in range(cm.shape[0]):
+        for predicted_id in range(cm.shape[1]):
+            if true_id != predicted_id and cm[true_id, predicted_id] > 0:
+                confusions.append({
+                    'true_category': label_map[str(true_id)],
+                    'predicted_category': label_map[str(predicted_id)],
+                    'count': int(cm[true_id, predicted_id]),
+                })
+
+    return {
+        'weakest_classes': weakest_classes,
+        'most_common_confusions': sorted(
+            confusions, key=lambda row: row['count'], reverse=True
+        )[:top_n],
+    }
+
+
+def save_error_analysis(analysis, path="static/error_analysis.json"):
+    """Persist a compact, reviewable error analysis report."""
+    with open(path, "w", encoding="utf-8") as file:
+        json.dump(analysis, file, indent=2, ensure_ascii=False)
+    print(f"  错误分析已保存: {path}")
 
 
 def save_best_model(model, model_name, metrics, validation_metrics, split_sizes):
@@ -552,6 +609,13 @@ def main():
     all_models['RandomForest'] = rf_model
     all_metrics['RandomForest'] = rf_metrics
 
+    # 模型4: Multinomial Naive Bayes（稀疏文本快速基线）
+    nb_model, nb_metrics = train_multinomial_nb(
+        X_train, y_train, X_validation, y_validation
+    )
+    all_models['MultinomialNB'] = nb_model
+    all_metrics['MultinomialNB'] = nb_metrics
+
     # Step 3: 加载标签名（用于混淆矩阵）
     with open("models/label_map.json", "r") as f:
         label_map = json.load(f)
@@ -586,6 +650,10 @@ def main():
     test_metrics = evaluate_model(
         y_test, test_predictions, best_model, refit_time
     )
+    error_analysis = build_error_analysis(
+        y_test, test_predictions, label_map, test_metrics
+    )
+    save_error_analysis(error_analysis)
     plot_confusion_matrix(
         y_test,
         test_predictions,
