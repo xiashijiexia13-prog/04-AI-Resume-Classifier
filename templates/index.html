@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Resume Classifier - 智能简历岗位匹配</title>
+    <title>AI Resume Classifier - 简历职业类别分类</title>
     <style>
         :root {
             --primary: #4f46e5;
@@ -267,7 +267,7 @@
     <div class="header">
         <div class="container">
             <h1>AI Resume Classifier</h1>
-            <p>智能简历岗位匹配系统 — 输入简历内容，AI自动判断最适合的岗位类别</p>
+            <p>英文简历职业类别分类系统 — 输入简历内容，预测其所属职业类别</p>
         </div>
     </div>
 
@@ -280,7 +280,7 @@
                     <span class="info-dot"></span> 模型就绪
                 </div>
                 <div class="info-item">模型: {{ model_info.model_name }}</div>
-                <div class="info-item">F1分数: {{ '%.2f'|format(model_info.f1_score * 100) }}%</div>
+                <div class="info-item">测试集 Weighted F1: {{ '%.2f'|format(model_info.f1_score * 100) }}%</div>
                 <div class="info-item">{{ model_info.num_categories }}个岗位类别</div>
             </div>
         </div>
@@ -296,14 +296,14 @@
         <div class="card">
             <h2>简历内容</h2>
             <p style="color: var(--text-secondary); margin-bottom: 12px;">
-                粘贴简历全文，支持纯文本。越详细的信息越有助于准确匹配。
+                粘贴英文简历全文，支持纯文本。内容越完整，分类结果通常越稳定。
             </p>
             <textarea id="resumeInput"
                       placeholder="在此粘贴简历内容&#10;&#10;例如：&#10;SOFTWARE ENGINEER&#10;Summary: Experienced software engineer with 5+ years...&#10;Skills: Python, Java, AWS, Docker...&#10;Experience: Senior Developer at ABC Corp..."></textarea>
             <div class="form-actions">
                 <button class="btn" id="predictBtn" onclick="submitPredict()"
                         {% if not model_ready %}disabled{% endif %}>
-                    开始分析匹配
+                    开始分类
                 </button>
                 <button class="btn btn-secondary" onclick="loadSample()">加载示例</button>
                 <button class="btn btn-secondary" onclick="clearInput()">清空</button>
@@ -321,7 +321,7 @@
                 <!-- 主要预测 -->
                 <div class="prediction-main">
                     <div>
-                        <div style="color: var(--text-secondary); margin-bottom: 4px;">最佳匹配岗位</div>
+                        <div style="color: var(--text-secondary); margin-bottom: 4px;">预测职业类别</div>
                         <span class="badge" id="resultCategory">--</span>
                     </div>
                     <div style="text-align: center;">
@@ -341,7 +341,7 @@
         </div>
 
         <div class="footer">
-            04-AI Resume Classifier | Powered by scikit-learn + Random Forest | 24个岗位类别
+            04-AI Resume Classifier | Powered by scikit-learn + {{ model_info.model_name or 'ML' }} | 24个职业类别
         </div>
     </div>
 
@@ -460,7 +460,7 @@ BS in Computer Science, Stanford University`;
                 resultError.textContent = '网络错误: ' + err.message;
             } finally {
                 btn.disabled = false;
-                btn.innerHTML = '开始分析匹配';
+                btn.innerHTML = '开始分类';
             }
         }
     </script>
